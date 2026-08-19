@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-// Define explicit type for connection keys
 type ConnectionKeys = 'shopify' | 'plaid' | 'ads' | 'analytics';
 
 interface ConnectionsState {
@@ -28,27 +27,103 @@ export default function SwiftAdsOnboarding() {
   });
   const [consent, setConsent] = useState<boolean>(false);
 
+  // Dynamic Underwriting Metrics (Simulated Live Data State)
+  const [monthlyMRR, setMonthlyMRR] = useState<number>(18000);
+  const [roas, setRoas] = useState<number>(3.4);
+  const [trafficGrowthPercent, setTrafficGrowthPercent] = useState<number>(18);
+  const [netMarginPercent, setNetMarginPercent] = useState<number>(25);
+
   // Step 3 State: Loan & Terms
-  const [loanAmount, setLoanAmount] = useState<number>(27500);
-  const [paybackMonths, setPaybackMonths] = useState<number>(6);
+  const [loanAmount, setLoanAmount] = useState<number>(15000);
+  const [paybackMonths, setPaybackMonths] = useState<number>(12);
   const [email, setEmail] = useState<string>('');
   const [submitted, setSubmitted] = useState<boolean>(false);
 
-  // Financial Constants: Prime Rate + 3%
-  const PRIME_RATE = 5.95; // Bank of Canada Prime %
-  const MARGIN = 3.00;     // SwiftAds Margin %
-  const APPLIED_APR = PRIME_RATE + MARGIN; // Total Interest Rate = 8.95%
+  // Financial Constants: Bank of Canada Prime Rate + 3%
+  const PRIME_RATE = 5.95; 
+  const MARGIN = 3.00;     
+  const APPLIED_APR = PRIME_RATE + MARGIN; // Total APR = 8.95%
 
-  // Compute Dynamic Recommended Payback Horizon based on Loan Size
-  const getRecommendedTerm = (amount: number): number => {
-    if (amount <= 10000) return 3;
-    if (amount <= 25000) return 5;
-    return 6;
+  // -------------------------------------------------------------
+  // DYNAMIC UNDERWRITING SCALING ENGINE
+  // -------------------------------------------------------------
+  let dataMultiplier = 1.0; // Base (Shopify + Bank)
+  if (connections.ads) dataMultiplier += 0.25;       // +25% limit boost for Ads
+  if (connections.analytics) dataMultiplier += 0.15; // +15% limit boost for Analytics
+
+  const maxLoanCap = Math.min(
+    Math.round((monthlyMRR * 1.2 * dataMultiplier) / 500) * 500,
+    50000
+  );
+
+  const calculateRecommendedTerm = (
+    amount: number,
+    mrr: number,
+    margin: number,
+    growth: number
+  ): number => {
+    const effectiveGrowth = connections.analytics ? growth : 0;
+    const projectedNetProfit = mrr * (margin / 100) * (1 + effectiveGrowth / 100);
+    const maxSafeMonthlyPayment = projectedNetProfit / 1.5; // DSCR = 1.5
+
+    if (maxSafeMonthlyPayment <= 0) return 24;
+
+    for (let months = 1; months <= 24; months++) {
+      const totalInterest = amount * (APPLIED_APR / 100) * (months / 12);
+      const estPayment = (amount + totalInterest) / months;
+      if (estPayment <= maxSafeMonthlyPayment) {
+        return months;
+      }
+    }
+    return 24;
   };
 
-  const recommendedTerm = getRecommendedTerm(loanAmount);
+  const recommendedTerm = calculateRecommendedTerm(
+    loanAmount,
+    monthlyMRR,
+    netMarginPercent,
+    trafficGrowthPercent
+  );
 
-  // Calculate Amortized Monthly Payment (Principal + Simple Annualized Interest)
+  // Calculate percentage position (1 to 24 range) for speech bubble and marker placement
+  const getMarkerPercent = (term: number) => {
+    return ((term - 1) / (24 - 1)) * 100;
+  };
+
+  const recommendedPercent = getMarkerPercent(recommendedTerm);
+
+  // Strictly Typed Flat Primitive Dependencies Array
+  useEffect(() => {
+    if (step === 3 && monthlyMRR === 18000) {
+      const randomMRR = Math.floor(Math.random() * (45000 - 14000 + 1) + 14000); // $14k - $45k
+      const randomRoas = Number((Math.random() * (4.6 - 2.8) + 2.8).toFixed(1)); // 2.8x - 4.6x
+      const randomTraffic = Math.floor(Math.random() * (32 - 12 + 1) + 12); // +12% - +32%
+      const randomMargin = Math.floor(Math.random() * (35 - 20 + 1) + 20); // 20% - 35%
+
+      setMonthlyMRR(randomMRR);
+      setRoas(randomRoas);
+      setTrafficGrowthPercent(randomTraffic);
+      setNetMarginPercent(randomMargin);
+
+      const initialCap = Math.min(
+        Math.round((randomMRR * 1.2 * dataMultiplier) / 500) * 500,
+        50000
+      );
+      setLoanAmount(initialCap);
+
+      const optimalTerm = calculateRecommendedTerm(initialCap, randomMRR, randomMargin, randomTraffic);
+      setPaybackMonths(optimalTerm);
+    }
+  }, [step, connections.shopify, connections.plaid, connections.ads, connections.analytics]);
+
+  // Adjust loan amount dynamically if connection state changes limit
+  useEffect(() => {
+    if (loanAmount > maxLoanCap) {
+      setLoanAmount(maxLoanCap);
+    }
+  }, [maxLoanCap]);
+
+  // Amortized Monthly Payment Calculation
   const calculateMonthlyPayment = (principal: number, months: number): number => {
     const totalInterest = principal * (APPLIED_APR / 100) * (months / 12);
     const totalRepayable = principal + totalInterest;
@@ -106,9 +181,7 @@ export default function SwiftAdsOnboarding() {
               Get Capital to Grow Quickly
             </h1>
             <p className="text-center text-gray-600 mb-8 text-sm">
-              Get approved for growth capital of up to $5,000 – $50,000 in under 2 minutes. 
-
-Connect your growth metrics and revenue sources to see how much you can qualify for.
+              Get approved for growth capital of up to $5,000 – $50,000 in under 2 minutes. Connect your growth metrics and revenue sources to see how much you can qualify for.
             </p>
 
             <div className="space-y-6 bg-[#F6F7EB] p-6 rounded-xl border border-gray-200 mb-8">
@@ -169,6 +242,10 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
               </div>
             ) : null}
 
+            <p className="text-center text-xs text-gray-500 mb-4 font-medium">
+              Connect the required accounts and data points to see how much you're qualified to borrow.
+            </p>
+
             <button
               disabled={!hasHistory || !hasMinMRR}
               onClick={() => setStep(2)}
@@ -198,12 +275,14 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              
+              {/* Card 1: Shopify */}
               <div className="bg-[#F6F7EB] p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-sm">Connect a Revenue Source</span>
-                    <span className="text-[10px] bg-blue-100 text-[#1E67B1] font-bold px-2 py-0.5 rounded">Required</span>
-                  </div>
+                  <span className="font-bold text-sm block">Connect a Revenue Source</span>
+                  <span className="inline-block text-[10px] bg-blue-100 text-[#1E67B1] font-bold px-2 py-0.5 rounded mt-1 mb-2">
+                    Required
+                  </span>
                   <p className="text-xs text-gray-500 mb-4">Connect an e-commerce platform so we can evaluate your monthly sales history.</p>
                 </div>
                 <button
@@ -216,12 +295,13 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
                 </button>
               </div>
 
+              {/* Card 2: Bank Data */}
               <div className="bg-[#F6F7EB] p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-sm">Connect your Banking Data</span>
-                    <span className="text-[10px] bg-blue-100 text-[#1E67B1] font-bold px-2 py-0.5 rounded">Required</span>
-                  </div>
+                  <span className="font-bold text-sm block">Connect your Banking Data</span>
+                  <span className="inline-block text-[10px] bg-blue-100 text-[#1E67B1] font-bold px-2 py-0.5 rounded mt-1 mb-2">
+                    Required
+                  </span>
                   <p className="text-xs text-gray-500 mb-4">Verifies cash flow via your financial institutions.</p>
                 </div>
                 <button
@@ -234,12 +314,14 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
                 </button>
               </div>
 
+              {/* Card 3: Ads Accounts */}
               <div className="bg-[#F6F7EB] p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-sm">Connect Your Ads Account(s)</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-4">This data will help us evaluate and predict customer demand.</p>
+                  <span className="font-bold text-sm block">Connect Your Ads Account(s)</span>
+                  <span className="inline-block text-[10px] bg-orange-100 text-[#F68C1F] font-bold px-2 py-0.5 rounded mt-1 mb-2">
+                    Access more capital by connecting your account
+                  </span>
+                  <p className="text-xs text-gray-500 mb-4">This data point will help us evaluate and predict customer demand.</p>
                 </div>
                 <button
                   onClick={() => toggleConnection('ads')}
@@ -251,12 +333,14 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
                 </button>
               </div>
 
+              {/* Card 4: Web Analytics */}
               <div className="bg-[#F6F7EB] p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-sm">Connect Your Web Analytics</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-4"> This data will help us evaluate your business' growth potential.</p>
+                  <span className="font-bold text-sm block">Connect Your Web Analytics</span>
+                  <span className="inline-block text-[10px] bg-orange-100 text-[#F68C1F] font-bold px-2 py-0.5 rounded mt-1 mb-2">
+                    Access more capital by connecting your account
+                  </span>
+                  <p className="text-xs text-gray-500 mb-4">This data point will help us evaluate your business' growth potential.</p>
                 </div>
                 <button
                   onClick={() => toggleConnection('analytics')}
@@ -267,6 +351,7 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
                   {connections.analytics ? '✓ Analytics Connected' : 'Connect Traffic Source'}
                 </button>
               </div>
+
             </div>
 
             <div className="flex items-start gap-3 bg-[#F6F7EB] p-4 rounded-xl mb-6 border border-gray-200">
@@ -278,7 +363,7 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
                 className="mt-1 h-4 w-4 rounded border-gray-300 text-[#1E67B1] focus:ring-[#1E67B1]"
               />
               <label htmlFor="consent" className="text-xs text-gray-600 leading-relaxed cursor-pointer">
-                I authorize SwiftAds to analyze read-only financial and marketing metrics to generate my pre-approved credit offer under PIPEDA regulations. I retain the right to disconnect my data at any time.
+                I agree to the terms and conditions.
               </label>
             </div>
 
@@ -309,27 +394,60 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
               </span>
               <p className="text-xs font-medium text-blue-100 mt-3">You're Eligible for Up To</p>
               <h2 className="text-5xl font-black mt-1 mb-3 text-white tracking-tight">
-                ${loanAmount.toLocaleString()} CAD
+                ${maxLoanCap.toLocaleString()}
               </h2>
+              <span className="inline-block bg-[#F68C1F] text-white font-bold text-xs px-3 py-1 rounded-full shadow">
+                Interest Rate: {APPLIED_APR.toFixed(2)}% APR
+              </span>
             </div>
 
+            {/* Dynamic Underwriting Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+              
+              {/* Card 1: Monthly MRR */}
               <div className="bg-[#F6F7EB] p-3.5 rounded-xl border border-gray-200">
                 <p className="text-[10px] text-gray-500 font-bold uppercase">Monthly MRR</p>
-                <p className="text-lg font-extrabold text-[#30292F]">$18,000</p>
+                <p className="text-lg font-extrabold text-[#30292F]">${monthlyMRR.toLocaleString()}</p>
               </div>
-              <div className="bg-[#F6F7EB] p-3.5 rounded-xl border border-gray-200">
-                <p className="text-[10px] text-gray-500 font-bold uppercase">ROAS Performance</p>
-                <p className="text-lg font-extrabold text-[#30292F]">3.4x Average</p>
-              </div>
-              <div className="bg-[#F6F7EB] p-3.5 rounded-xl border border-gray-200">
-                <p className="text-[10px] text-gray-500 font-bold uppercase">Traffic Trajectory</p>
-                <p className="text-lg font-extrabold text-[#30292F]">+18% customers</p>
-              </div>
+
+              {/* Card 2: ROAS Performance OR Direct Connect Option */}
+              {connections.ads ? (
+                <div className="bg-[#F6F7EB] p-3.5 rounded-xl border border-gray-200 transition-all duration-300">
+                  <p className="text-[10px] text-gray-500 font-bold uppercase">ROAS Performance</p>
+                  <p className="text-lg font-extrabold text-[#30292F]">{roas}x</p>
+                </div>
+              ) : (
+                <div 
+                  onClick={() => toggleConnection('ads')}
+                  className="bg-orange-50 border border-dashed border-[#F68C1F] p-3.5 rounded-xl cursor-pointer hover:bg-orange-100 transition flex flex-col justify-between"
+                >
+                  <p className="text-[10px] text-[#F68C1F] font-bold uppercase">ROAS Unverified</p>
+                  <p className="text-xs font-bold text-[#30292F] underline">+ Connect Ad Accounts</p>
+                </div>
+              )}
+
+              {/* Card 3: Traffic Trajectory OR Direct Connect Option */}
+              {connections.analytics ? (
+                <div className="bg-[#F6F7EB] p-3.5 rounded-xl border border-gray-200 transition-all duration-300">
+                  <p className="text-[10px] text-gray-500 font-bold uppercase">Traffic Trajectory</p>
+                  <p className="text-lg font-extrabold text-[#30292F]">+{trafficGrowthPercent}% growth</p>
+                </div>
+              ) : (
+                <div 
+                  onClick={() => toggleConnection('analytics')}
+                  className="bg-blue-50 border border-dashed border-[#1E67B1] p-3.5 rounded-xl cursor-pointer hover:bg-blue-100 transition flex flex-col justify-between"
+                >
+                  <p className="text-[10px] text-[#1E67B1] font-bold uppercase">Traffic Unverified</p>
+                  <p className="text-xs font-bold text-[#30292F] underline">+ Connect Analytics Platform</p>
+                </div>
+              )}
+
+              {/* Card 4: Interest Rate */}
               <div className="bg-[#F6F7EB] p-3.5 rounded-xl border border-gray-200">
                 <p className="text-[10px] text-gray-500 font-bold uppercase">Interest Rate</p>
                 <p className="text-lg font-extrabold text-[#1E67B1]">{APPLIED_APR.toFixed(2)}%</p>
               </div>
+
             </div>
 
             {/* Interactive Calculator Section */}
@@ -337,89 +455,120 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
               
               {/* Slider 1: Loan Amount */}
               <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="text-sm font-bold text-[#30292F]">1. Adjust Requested Amount:</label>
-                  <span className="text-lg font-black text-[#1E67B1]">${loanAmount.toLocaleString()} CAD</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-1 sm:gap-0">
+                  <label className="text-sm font-bold text-[#30292F]">1. Choose the amount of capital:</label>
+                  <span className="text-lg font-black text-[#1E67B1]">${loanAmount.toLocaleString()}</span>
                 </div>
                 <input
                   type="range"
                   min="5000"
-                  max="27500"
+                  max={maxLoanCap}
                   step="500"
                   value={loanAmount}
                   onChange={(e) => setLoanAmount(Number(e.target.value))}
                   className="w-full accent-[#F68C1F] cursor-pointer"
                 />
+                {!connections.ads || !connections.analytics ? (
+                  <p className="text-[11px] text-[#30292F] mt-1 font-semibold">
+                    💡 Tip: Click the unverified cards above to connect your Ad Accounts and/or Analytics to unlock more capital and favourable terms.
+                  </p>
+                ) : null}
               </div>
 
-              {/* Slider 2: Payback Period & Recommendation */}
+              {/* Slider 2: Loan Term (Months) */}
               <div className="border-t border-gray-300 pt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-bold text-[#30292F]">2. Payback Period (Months):</label>
-                    {paybackMonths === recommendedTerm && (
-                      <span className="bg-green-100 text-green-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-green-300">
-                        ★ Recommended Option
-                      </span>
-                    )}
-                  </div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-1 sm:gap-0">
+                  <label className="text-sm font-bold text-[#30292F]">2. Choose how much time you need to repay the capital (months):</label>
                   <span className="text-base font-bold text-[#30292F]">{paybackMonths} Months</span>
                 </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="6"
-                  step="1"
-                  value={paybackMonths}
-                  onChange={(e) => setPaybackMonths(Number(e.target.value))}
-                  className="w-full accent-[#1E67B1] cursor-pointer"
-                />
-                
-                {/* Visual Recommendation Indicator */}
+
+                {/* Relative Track Wrapper for Pointer Speech Bubble & Marker */}
+                <div className="relative pt-8 pb-4">
+                  
+                  {/* Floating Speech Bubble Tooltip when slider is on recommended term */}
+                  {paybackMonths === recommendedTerm && (
+                    <div 
+                      className="absolute top-0 transform -translate-x-1/2 z-20 transition-all duration-200"
+                      style={{ left: `${recommendedPercent}%` }}
+                    >
+                      <div className="relative bg-green-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-md shadow-md whitespace-nowrap">
+                        ★ Optimal Cash Flow ({recommendedTerm} Mo)
+                        {/* Downward Pointer Arrow */}
+                        <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-green-600 rotate-45"></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Range Input Slider */}
+                  <input
+                    type="range"
+                    min="1"
+                    max="24"
+                    step="1"
+                    value={paybackMonths}
+                    onChange={(e) => setPaybackMonths(Number(e.target.value))}
+                    className="w-full accent-[#1E67B1] cursor-pointer relative z-10"
+                  />
+
+                  {/* Permanent Target Pin Indicator on Slider Track */}
+                  <div 
+                    className="absolute bottom-2 transform -translate-x-1/2 flex flex-col items-center pointer-events-none z-0"
+                    style={{ left: `${recommendedPercent}%` }}
+                  >
+                    <span className="text-[10px] text-green-700 font-extrabold leading-none">▲</span>
+                    <span className="text-[9px] text-green-700 font-bold whitespace-nowrap">Optimal</span>
+                  </div>
+
+                </div>
+
+                {/* Visual Recommendation Indicator Scale */}
                 <div className="flex justify-between text-[11px] text-gray-500 mt-1">
                   <span>1 Mo</span>
-                  <span>2 Mo</span>
-                  <span>3 Mo</span>
-                  <span>4 Mo</span>
-                  <span>5 Mo</span>
                   <span>6 Mo</span>
+                  <span>12 Mo</span>
+                  <span>18 Mo</span>
+                  <span>24 Mo</span>
                 </div>
               </div>
 
               {/* Repayment Breakdown Output */}
-              <div className="bg-white p-4 rounded-lg border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="bg-white p-4 rounded-lg border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                   <p className="text-xs text-gray-500 font-semibold uppercase">Estimated Monthly Payment</p>
-                  <p className="text-2xl font-black text-[#1E67B1]">
-                    ${monthlyPayment.toLocaleString()} <span className="text-xs font-normal text-gray-500">/ month</span>
-                  </p>
+                  <div className="flex flex-col items-start sm:flex-row sm:items-baseline sm:gap-1.5">
+                    <p className="text-2xl font-black text-[#1E67B1]">
+                      ${monthlyPayment.toLocaleString()}
+                    </p>
+                    <span className="text-xs font-semibold text-gray-500">/ month</span>
+                  </div>
                 </div>
-                <div className="text-right border-t md:border-t-0 md:border-l border-gray-200 pt-2 md:pt-0 md:pl-4 w-full md:w-auto">
+                <div className="text-left md:text-right border-t md:border-t-0 md:border-l border-gray-200 pt-2 md:pt-0 md:pl-4 w-full md:w-auto">
                   <p className="text-xs text-gray-500">Interest Cost ({APPLIED_APR.toFixed(2)}% APR):</p>
-                  <p className="text-sm font-bold text-gray-700">+${totalCostOfBorrowing.toLocaleString()} CAD</p>
+                  <p className="text-sm font-bold text-gray-700">+${totalCostOfBorrowing.toLocaleString()}</p>
                 </div>
               </div>
 
             </div>
 
+            {/* HIGH-VISIBILITY FORM BLOCK */}
             {!submitted ? (
-              <div className="bg-[#30292F] text-white p-6 rounded-xl">
+              <div className="bg-[#30292F] text-white p-6 rounded-xl shadow-md border border-gray-700">
                 <h3 className="font-bold text-base mb-1">Lock In Your Loan Terms</h3>
                 <p className="text-xs text-gray-300 mb-4">
                   Register your account to lock in these terms. Funds are disbursed in as little as 48 hrs.
                 </p>
-                <form onSubmit={(e) => { e.preventDefault(); setSubmitted(true); }} className="flex gap-2">
+                <form onSubmit={(e) => { e.preventDefault(); setSubmitted(true); }} className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="email"
                     required
                     placeholder="Enter business email (e.g. founder@brand.ca)"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="flex-1 px-4 py-2.5 rounded-lg text-sm text-[#30292F] focus:outline-none"
+                    className="flex-1 px-4 py-3 rounded-lg text-sm bg-white text-gray-900 border border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F68C1F] shadow-inner font-medium"
                   />
                   <button
                     type="submit"
-                    className="bg-[#F68C1F] hover:bg-orange-600 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition"
+                    className="bg-[#F68C1F] hover:bg-orange-600 text-white font-bold px-6 py-3 rounded-lg text-sm transition duration-200 shadow-md whitespace-nowrap"
                   >
                     Register Now
                   </button>
@@ -429,13 +578,16 @@ Connect your growth metrics and revenue sources to see how much you can qualify 
               <div className="bg-green-50 border border-green-200 text-green-800 p-6 rounded-xl text-center">
                 <p className="font-bold text-lg mb-1">🎉 Pre-Approval Reserved!</p>
                 <p className="text-xs">
-                  We saved your offer of <strong>${loanAmount.toLocaleString()} CAD</strong> over <strong>{paybackMonths} months</strong> (${monthlyPayment.toLocaleString()}/mo) for <strong>{email}</strong>.
+                  We saved your offer of <strong>${loanAmount.toLocaleString()}</strong> over <strong>{paybackMonths} months</strong> (${monthlyPayment.toLocaleString()}/mo) for <strong>{email}</strong>.
                 </p>
               </div>
             )}
 
             <button
-              onClick={() => setStep(2)}
+              onClick={() => {
+                setStep(2);
+                setSubmitted(false);
+              }}
               className="w-full mt-4 text-xs text-gray-400 hover:text-gray-600 font-semibold py-2"
             >
               ← Modify Connected Data Sources
